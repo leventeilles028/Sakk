@@ -12,12 +12,19 @@
             align-items: center;
             height: 100vh;
             background-color: gray;
-            position: relative;
+            flex-direction: column;
         }
 
         #jatekter {
             display: flex;
             align-items: center;
+            flex-direction: column;
+        }
+
+        #turn-indicator {
+            font-size: 24px;
+            margin-bottom: 10px;
+            color: white;
         }
 
         #saktabla {
@@ -25,6 +32,7 @@
             grid-template-columns: repeat(8, 80px);
             grid-template-rows: repeat(8, 80px);
             border: 2px solid black;
+            position: relative;
         }
 
         .mezo {
@@ -34,6 +42,7 @@
             justify-content: center;
             align-items: center;
             font-size: 50px;
+            cursor: pointer;
         }
 
         .feher {
@@ -48,8 +57,12 @@
             background-color: yellow;
         }
 
+        .lehetoseg {
+            background-color: lightblue;
+        }
+
         #ujjatekgomb {
-            margin-left: 20px;
+            margin-top: 20px;
             padding: 10px 20px;
             font-size: 18px;
             cursor: pointer;
@@ -75,21 +88,37 @@
             display: none;
             z-index: 10;
             border-radius: 10px;
+            text-align: center;
+        }
+
+        #feher-leutes,
+        #fekete-leutes {
+            margin-top: 20px;
+            color: white;
+            text-align: center;
+            width: 100%;
         }
     </style>
 </head>
 <body>
 
     <div id="jatekter">
+        <div id="turn-indicator">Jelenlegi kör: Fehér</div>
         <div id="saktabla"></div>
         <button id="ujjatekgomb">Új játék</button>
     </div>
     <div id="nyertes"></div>
 
+    <div id="feher-leutes">Fehér ütött bábuk: </div>
+    <div id="fekete-leutes">Fekete ütött bábuk: </div>
+
     <script>
         const tabla = document.getElementById('saktabla');
         const ujJatekGomb = document.getElementById('ujjatekgomb');
         const nyertesKijelzo = document.getElementById('nyertes');
+        const feherLeutes = document.getElementById('feher-leutes');
+        const feketeLeutes = document.getElementById('fekete-leutes');
+        const turnIndicator = document.getElementById('turn-indicator');
 
         const babuk = {
             'r': '♜', 'n': '♞', 'b': '♝', 'q': '♛', 'k': '♚', 'p': '♟',
@@ -111,6 +140,9 @@
         let jelenlegiKor = 'feher';
         let kivalasztottBabu = null;
         let kivalasztottMezo = null;
+        let leutottFeher = [];
+        let leutottFekete = [];
+        let jatekVege = false;
 
         function tablaLetrehozas() {
             tabla.innerHTML = '';
@@ -140,35 +172,48 @@
                     tabla.appendChild(mezo);
                 }
             }
+            turnIndicator.textContent = `Jelenlegi kör: ${jelenlegiKor === 'feher' ? 'Fehér' : 'Fekete'}`;
         }
 
         function mezoKattintas(esemeny) {
+            if (jatekVege) return;
+
             const mezo = esemeny.currentTarget;
-            const sor = mezo.getAttribute('data-sor');
-            const oszlop = mezo.getAttribute('data-oszlop');
+            const sor = Number(mezo.getAttribute('data-sor'));
+            const oszlop = Number(mezo.getAttribute('data-oszlop'));
             const babu = tablaAllas[sor][oszlop];
 
-            if (kivalasztottBabu && kivalasztottMezo.sor === sor && kivalasztottMezo.oszlop === oszlop) {
+            if (kivalasztottMezo && kivalasztottMezo.sor === sor && kivalasztottMezo.oszlop === oszlop) {
+                kiemelesTorles();
                 kivalasztottBabu = null;
                 kivalasztottMezo = null;
-                kiemelesTorles();
             } else if (kivalasztottBabu) {
                 babuMozgatas(sor, oszlop);
-            } else if (babu) {
-                if (helyesKor(babu)) {
-                    kivalasztottBabu = babu;
-                    kivalasztottMezo = { sor, oszlop };
-                    mezoKiemeles(mezo);
+            } else if (babu && helyesKor(babu)) {
+                kivalasztottBabu = babu;
+                kivalasztottMezo = { sor, oszlop };
+                mezoKiemeles(mezo);
+                mutatLehetsegesLepesek(sor, oszlop, babu);
+            }
+        }
+
+        function mutatLehetsegesLepesek(sor, oszlop, babu) {
+            const lehetsegesLepesek = [];
+            kiemelesTorles();
+
+            for (let i = 0; i < 8; i++) {
+                for (let j = 0; j < 8; j++) {
+                    if (ervenyesLepes(babu, sor, oszlop, i, j, tablaAllas[i][j])) {
+                        lehetsegesLepesek.push({ sor: i, oszlop: j });
+                        const mezo = document.querySelector(`.mezo[data-sor='${i}'][data-oszlop='${j}']`);
+                        mezo.classList.add('lehetoseg');
+                    }
                 }
             }
         }
 
-        function helyesKor(babu) {
-            if (jelenlegiKor === 'feher') {
-                return babu === babu.toUpperCase();
-            } else {
-                return babu === babu.toLowerCase();
-            }
+        function kiemelesTorles() {
+            document.querySelectorAll('.mezo').forEach(mezo => mezo.classList.remove('kiemel', 'lehetoseg'));
         }
 
         function mezoKiemeles(mezo) {
@@ -176,185 +221,91 @@
             mezo.classList.add('kiemel');
         }
 
-        function kiemelesTorles() {
-            const kiemeltek = document.querySelectorAll('.kiemel');
-            kiemeltek.forEach(m => m.classList.remove('kiemel'));
-        }
+        function ervenyesLepes(babu, sor, oszlop, celSor, celOszlop, celMezoBabu) {
+            const irany = jelenlegiKor === 'feher' ? -1 : 1;
 
-        function babuMozgatas(celSor, celOszlop) {
-            const { sor, oszlop } = kivalasztottMezo;
-            const babu = kivalasztottBabu;
-            const celMezo = tablaAllas[celSor][celOszlop];
-
-            if (ervenyesLepes(babu, sor, oszlop, celSor, celOszlop, celMezo)) {
-                tablaAllas[celSor][celOszlop] = babu;
-                tablaAllas[sor][oszlop] = '';
-
-                kivalasztottBabu = null;
-                kivalasztottMezo = null;
-                kiemelesTorles();
-
-                kiralyEllenorzes();
-
-                jelenlegiKor = jelenlegiKor === 'feher' ? 'fekete' : 'feher';
-
-                tablaLetrehozas();
-            }
-        }
-
-        function kiralyEllenorzes() {
-            let feherKiraly = false;
-            let feketeKiraly = false;
-
-            for (let sor = 0; sor < 8; sor++) {
-                for (let oszlop = 0; oszlop < 8; oszlop++) {
-                    if (tablaAllas[sor][oszlop] === 'K') {
-                        feherKiraly = true;
-                    }
-                    if (tablaAllas[sor][oszlop] === 'k') {
-                        feketeKiraly = true;
-                    }
-                }
-            }
-
-            if (!feherKiraly) {
-                nyertKihirdetes('Fekete');
-            } else if (!feketeKiraly) {
-                nyertKihirdetes('Fehér');
-            }
-        }
-
-        function nyertKihirdetes(gyoztes) {
-            nyertesKijelzo.textContent = `${gyoztes} nyert!`;
-            nyertesKijelzo.style.display = 'block';
-        }
-
-        function ervenyesLepes(babu, kezdoSor, kezdoOszlop, celSor, celOszlop, celMezo) {
-            if (celMezo && ((celMezo === celMezo.toUpperCase() && babu === babu.toUpperCase()) ||
-                (celMezo === celMezo.toLowerCase() && babu === babu.toLowerCase()))) {
-                return false;
-            }
+            if (celMezoBabu && helyesKor(celMezoBabu)) return false;
 
             switch (babu.toLowerCase()) {
                 case 'p':
-                    return ervenyesGyalogLepes(babu, kezdoSor, kezdoOszlop, celSor, celOszlop, celMezo);
-                case 'r':
-                    return ervenyesBastyaLepes(kezdoSor, kezdoOszlop, celSor, celOszlop);
-                case 'n':
-                    return ervenyesHuszarLepes(kezdoSor, kezdoOszlop, celSor, celOszlop);
-                case 'b':
-                    return ervenyesFutoLepes(kezdoSor, kezdoOszlop, celSor, celOszlop);
-                case 'q':
-                    return ervenyesVezerLepes(kezdoSor, kezdoOszlop, celSor, celOszlop);
-                case 'k':
-                    return ervenyesKiralyLepes(kezdoSor, kezdoOszlop, celSor, celOszlop);
-                default:
-                    return false;
-            }
-        }
-
-        function ervenyesGyalogLepes(babu, kezdoSor, kezdoOszlop, celSor, celOszlop, celMezo) {
-            const irany = babu === 'P' ? -1 : 1;
-            const kezdoSorInt = parseInt(kezdoSor);
-            const celSorInt = parseInt(celSor);
-
-            if (kezdoOszlop === celOszlop && !celMezo) {
-                if (kezdoSorInt + irany === celSorInt) {
-                    return true;
-                }
-                if ((babu === 'P' && kezdoSorInt === 6) || (babu === 'p' && kezdoSorInt === 1)) {
-                    if (kezdoSorInt + irany * 2 === celSorInt && !tablaAllas[kezdoSorInt + irany][kezdoOszlop]) {
+                    if (oszlop === celOszlop && !celMezoBabu) {
+                        if ((sor + irany === celSor) || (sor + irany * 2 === celSor && ((jelenlegiKor === 'feher' && sor === 6) || (jelenlegiKor === 'fekete' && sor === 1)))) {
+                            return true;
+                        }
+                    } else if (Math.abs(oszlop - celOszlop) === 1 && sor + irany === celSor && celMezoBabu) {
                         return true;
                     }
-                }
+                    break;
+                case 'r':
+                    if (sor === celSor || oszlop === celOszlop) return true;
+                    break;
+                case 'n':
+                    if ((Math.abs(sor - celSor) === 2 && Math.abs(oszlop - celOszlop) === 1) || (Math.abs(sor - celSor) === 1 && Math.abs(oszlop - celOszlop) === 2)) return true;
+                    break;
+                case 'b':
+                    if (Math.abs(sor - celSor) === Math.abs(oszlop - celOszlop)) return true;
+                    break;
+                case 'q':
+                    if (Math.abs(sor - celSor) === Math.abs(oszlop - celOszlop) || sor === celSor || oszlop === celOszlop) return true;
+                    break;
+                case 'k':
+                    if (Math.abs(sor - celSor) <= 1 && Math.abs(oszlop - celOszlop) <= 1) return true;
+                    break;
             }
-
-            if (Math.abs(kezdoOszlop - celOszlop) === 1 && kezdoSorInt + irany === celSorInt && celMezo) {
-                return true;
-            }
-
             return false;
         }
 
-        function ervenyesBastyaLepes(kezdoSor, kezdoOszlop, celSor, celOszlop) {
-            if (kezdoSor === celSor || kezdoOszlop === celOszlop) {
-                const sorLepes = kezdoSor === celSor ? 0 : kezdoSor < celSor ? 1 : -1;
-                const oszlopLepes = kezdoOszlop === celOszlop ? 0 : kezdoOszlop < celOszlop ? 1 : -1;
+        function babuMozgatas(celSor, celOszlop) {
+            const celMezoBabu = tablaAllas[celSor][celOszlop];
 
-                let ellenorzottSor = parseInt(kezdoSor) + sorLepes;
-                let ellenorzottOszlop = parseInt(kezdoOszlop) + oszlopLepes;
+            if (ervenyesLepes(kivalasztottBabu, kivalasztottMezo.sor, kivalasztottMezo.oszlop, celSor, celOszlop, celMezoBabu)) {
+                tablaAllas[celSor][celOszlop] = kivalasztottBabu;
+                tablaAllas[kivalasztottMezo.sor][kivalasztottMezo.oszlop] = '';
 
-                while (ellenorzottSor != celSor || ellenorzottOszlop != celOszlop) {
-                    if (tablaAllas[ellenorzottSor][ellenorzottOszlop]) {
-                        return false;
+                if (celMezoBabu) {
+                    if (jelenlegiKor === 'feher') {
+                        leutottFekete.push(celMezoBabu);
+                    } else {
+                        leutottFeher.push(celMezoBabu);
                     }
-                    ellenorzottSor += sorLepes;
-                    ellenorzottOszlop += oszlopLepes;
+                    frissitLeutes();
                 }
 
-                return true;
-            }
+                jelenlegiKor = jelenlegiKor === 'feher' ? 'fekete' : 'feher';
+                tablaLetrehozas();
 
-            return false;
-        }
-
-        function ervenyesHuszarLepes(kezdoSor, kezdoOszlop, celSor, celOszlop) {
-            const sorKulonbseg = Math.abs(kezdoSor - celSor);
-            const oszlopKulonbseg = Math.abs(kezdoOszlop - celOszlop);
-
-            return (sorKulonbseg === 2 && oszlopKulonbseg === 1) || (sorKulonbseg === 1 && oszlopKulonbseg === 2);
-        }
-
-        function ervenyesFutoLepes(kezdoSor, kezdoOszlop, celSor, celOszlop) {
-            const sorKulonbseg = Math.abs(kezdoSor - celSor);
-            const oszlopKulonbseg = Math.abs(kezdoOszlop - celOszlop);
-
-            if (sorKulonbseg === oszlopKulonbseg) {
-                const sorLepes = kezdoSor < celSor ? 1 : -1;
-                const oszlopLepes = kezdoOszlop < celOszlop ? 1 : -1;
-
-                let ellenorzottSor = parseInt(kezdoSor) + sorLepes;
-                let ellenorzottOszlop = parseInt(kezdoOszlop) + oszlopLepes;
-
-                while (ellenorzottSor != celSor || ellenorzottOszlop != celOszlop) {
-                    if (tablaAllas[ellenorzottSor][ellenorzottOszlop]) {
-                        return false;
-                    }
-                    ellenorzottSor += sorLepes;
-                    ellenorzottOszlop += oszlopLepes;
+                if (celMezoBabu && celMezoBabu.toLowerCase() === 'k') {
+                    jatekVege = true;
+                    nyertesKijelzo.style.display = 'block';
+                    nyertesKijelzo.textContent = `${jelenlegiKor === 'feher' ? 'Fekete' : 'Fehér'} nyert!`;
                 }
 
-                return true;
+                kivalasztottBabu = null;
+                kivalasztottMezo = null;
             }
-
-            return false;
         }
 
-        function ervenyesVezerLepes(kezdoSor, kezdoOszlop, celSor, celOszlop) {
-            return ervenyesBastyaLepes(kezdoSor, kezdoOszlop, celSor, celOszlop) || ervenyesFutoLepes(kezdoSor, kezdoOszlop, celSor, celOszlop);
+        function helyesKor(babu) {
+            return (jelenlegiKor === 'feher' && babu === babu.toUpperCase()) || (jelenlegiKor === 'fekete' && babu === babu.toLowerCase());
         }
 
-        function ervenyesKiralyLepes(kezdoSor, kezdoOszlop, celSor, celOszlop) {
-            const sorKulonbseg = Math.abs(kezdoSor - celSor);
-            const oszlopKulonbseg = Math.abs(kezdoOszlop - celOszlop);
-
-            return sorKulonbseg <= 1 && oszlopKulonbseg <= 1;
+        function frissitLeutes() {
+            feherLeutes.textContent = `Fehér ütött bábuk: ${leutottFekete.map(b => babuk[b]).join(', ')}`;
+            feketeLeutes.textContent = `Fekete ütött bábuk: ${leutottFeher.map(b => babuk[b]).join(', ')}`;
         }
 
         ujJatekGomb.addEventListener('click', () => {
             tablaAllas = JSON.parse(JSON.stringify(kezdoTablaAllas));
             jelenlegiKor = 'feher';
-            kivalasztottBabu = null;
-            kivalasztottMezo = null;
+            leutottFeher = [];
+            leutottFekete = [];
+            jatekVege = false;
             nyertesKijelzo.style.display = 'none';
             tablaLetrehozas();
         });
 
         tablaLetrehozas();
     </script>
-
-    <div class="tenor-gif-embed" data-postid="25973943" data-share-method="host" data-aspect-ratio="1" data-width="10%"><a href="https://tenor.com/view/hourglass-time-gif-25973943">Hourglass Time Sticker</a>from <a href="https://tenor.com/search/hourglass-stickers">Hourglass Stickers</a></div>
-    <script type="text/javascript" async src="https://tenor.com/embed.js"></script>
 
 </body>
 </html>
